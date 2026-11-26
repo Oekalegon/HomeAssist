@@ -11,6 +11,8 @@ final class AppModel {
     var isLive = false
     /// Why live updates are not running (e.g. "Reconnecting in 4 s…"), or `nil`.
     var liveStatus: String?
+    /// Entities with a toggle request in flight. Tiles show a spinner for these.
+    private(set) var togglingEntityIDs: Set<String> = []
 
     /// Reconnect backoff: starts at the lower bound, doubles up to the upper bound. Seconds.
     var reconnectDelay: ClosedRange<Double> = 1...30
@@ -25,7 +27,6 @@ final class AppModel {
     private var refreshTask: Task<Void, Never>?
     private var pendingChanges: [StateChange] = []
     private var flushTask: Task<Void, Never>?
-    private var inFlightToggles: Set<String> = []
     private let makeLiveSource: @Sendable (HAClient) -> any LiveUpdateSource
 
     private let urlKey = "serverURL"
@@ -95,8 +96,8 @@ final class AppModel {
     /// Toggles an entity. Ignored while a toggle for the same entity is still in flight, so a
     /// double tap can't cancel itself out.
     func toggle(_ entity: HAEntity) async {
-        guard let client, inFlightToggles.insert(entity.entityId).inserted else { return }
-        defer { inFlightToggles.remove(entity.entityId) }
+        guard let client, togglingEntityIDs.insert(entity.entityId).inserted else { return }
+        defer { togglingEntityIDs.remove(entity.entityId) }
         do {
             try await client.callService(domain: "homeassistant", service: "toggle", entityId: entity.entityId)
             // With a live connection the resulting state_changed event updates the list.
