@@ -8,6 +8,8 @@ import SwiftUI
 struct EntityTile: View {
     @Environment(AppModel.self) private var model
     let entity: HAEntity
+    /// Shown under the name, e.g. on the Favourites tab where tiles from several rooms mix.
+    var roomName: String?
     let onDetails: () -> Void
 
     private var tint: Color {
@@ -38,6 +40,9 @@ struct EntityTile: View {
             }
             Spacer(minLength: 0)
             Text(entity.friendlyName).font(.subheadline).lineLimit(2)
+            if let roomName {
+                Text(roomName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
             if let subtitle = entity.tileSubtitle {
                 Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }

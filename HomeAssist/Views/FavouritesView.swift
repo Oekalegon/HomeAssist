@@ -36,7 +36,10 @@ struct FavouritesView: View {
     }
 
     private var tileGrid: some View {
-        EntitySectionsGrid(sections: sections) { details = EntityRef(id: $0.entityId) }
+        EntitySectionsGrid(sections: sections,
+                           roomName: { model.registry?.roomName(for: $0.entityId) }) {
+            details = EntityRef(id: $0.entityId)
+        }
     }
 
     private var editList: some View {

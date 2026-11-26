@@ -55,6 +55,14 @@ final class RoomsTests: XCTestCase {
         XCTAssertEqual(registry.rooms(for: [entity("light.k")]).map(\.id), ["k"])
     }
 
+    func testRoomNameForEntity() {
+        let registry = HARegistry(areas: [kitchen], entityAreas: ["light.k": "k", "light.stale": "gone"],
+                                  hiddenEntityIDs: [])
+        XCTAssertEqual(registry.roomName(for: "light.k"), "Kitchen")
+        XCTAssertNil(registry.roomName(for: "light.stale"), "unknown area")
+        XCTAssertNil(registry.roomName(for: "light.loose"), "no area")
+    }
+
     func testSummary() {
         let room = Room(id: "k", name: "Kitchen", entities: [
             entity("light.a", state: "on"), entity("light.b", state: "on"), entity("light.c", state: "off"),

@@ -35,6 +35,12 @@ struct HARegistry: Sendable, Equatable {
     /// Entities the user hid or disabled in Home Assistant. They are not shown in rooms.
     var hiddenEntityIDs: Set<String>
 
+    /// The name of the room an entity is in, or `nil` if it has none.
+    func roomName(for entityID: String) -> String? {
+        guard let areaID = entityAreas[entityID] else { return nil }
+        return areas.first { $0.areaId == areaID }?.name
+    }
+
     static let empty = HARegistry(areas: [], entityAreas: [:], hiddenEntityIDs: [])
 
     /// An entity's own area wins; otherwise it inherits its device's area.

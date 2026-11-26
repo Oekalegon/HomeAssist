@@ -3,6 +3,8 @@ import SwiftUI
 /// Entities as tiles, in sections (Climate, Lights, Sensors, Other).
 struct EntitySectionsGrid: View {
     let sections: [(section: EntitySection, entities: [HAEntity])]
+    /// Optional room name to show on each tile.
+    var roomName: (HAEntity) -> String? = { _ in nil }
     let onDetails: (HAEntity) -> Void
 
     var body: some View {
@@ -17,7 +19,7 @@ struct EntitySectionsGrid: View {
                                   : [GridItem(.adaptive(minimum: 150), spacing: 12)],
                                   spacing: 12) {
                             ForEach(group.entities) { entity in
-                                EntityTile(entity: entity) { onDetails(entity) }
+                                EntityTile(entity: entity, roomName: roomName(entity)) { onDetails(entity) }
                             }
                         }
                     }
