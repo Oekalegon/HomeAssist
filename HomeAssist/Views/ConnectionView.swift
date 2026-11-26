@@ -5,6 +5,7 @@ struct ConnectionView: View {
     @State private var url = ""
     @State private var token = ""
     @State private var showToken = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -37,7 +38,13 @@ struct ConnectionView: View {
                         if let pasted = strings.first { token = pasted }
                     }
                 } footer: {
-                    Text("Create one in Home Assistant under your profile → Security → Long-lived access tokens.")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Create one in Home Assistant under your profile → Security → Long-lived access tokens.")
+                        if !token.isEmpty && !AccessToken.looksComplete(token) {
+                            Text("This doesn't look like a complete token (they are about 180 characters). Check that it pasted fully.")
+                                .foregroundStyle(.orange)
+                        }
+                    }
                 }
                 if let error = model.errorMessage {
                     Section { Text(error).foregroundStyle(.red) }
@@ -53,6 +60,8 @@ struct ConnectionView: View {
             }
             .navigationTitle("Connect")
             .onAppear { if url.isEmpty { url = model.savedURL } }
+            // Never leave the token revealed after the app has been backgrounded.
+            .onChange(of: scenePhase) { if scenePhase != .active { showToken = false } }
         }
     }
 }
