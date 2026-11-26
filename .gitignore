@@ -5,3 +5,6 @@ build/
 *.xcodeproj
 HomeAssist/Info.plist
 .swiftpm/
+
+# Claude Code
+.claude/settings.local.json
