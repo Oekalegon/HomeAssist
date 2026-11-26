@@ -1,0 +1,32 @@
+name: HomeAssist
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "18.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    GENERATE_INFOPLIST_FILE: YES
+targets:
+  HomeAssist:
+    type: application
+    platform: iOS
+    sources: [HomeAssist]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.HomeAssist
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Connects to your Home Assistant server on the local network."
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    info:
+      path: HomeAssist/Info.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSBonjourServices: ["_home-assistant._tcp"]
+  HomeAssistTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: HomeAssist
