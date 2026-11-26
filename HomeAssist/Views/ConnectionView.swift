@@ -4,6 +4,7 @@ struct ConnectionView: View {
     @Environment(AppModel.self) private var model
     @State private var url = ""
     @State private var token = ""
+    @State private var showToken = false
 
     var body: some View {
         NavigationStack {
@@ -15,9 +16,26 @@ struct ConnectionView: View {
                         .autocorrectionDisabled()
                 }
                 Section {
-                    SecureField("Long-lived access token", text: $token)
+                    HStack {
+                        Group {
+                            if showToken {
+                                TextField("Long-lived access token", text: $token)
+                            } else {
+                                SecureField("Long-lived access token", text: $token)
+                            }
+                        }
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        Button(showToken ? "Hide token" : "Show token",
+                               systemImage: showToken ? "eye.slash" : "eye") { showToken.toggle() }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.borderless)
+                    }
+                    // Fills the field straight from the clipboard. Pasting into a secure field
+                    // can drop all but one character (seen in the simulator).
+                    PasteButton(payloadType: String.self) { strings in
+                        if let pasted = strings.first { token = pasted }
+                    }
                 } footer: {
                     Text("Create one in Home Assistant under your profile → Security → Long-lived access tokens.")
                 }
