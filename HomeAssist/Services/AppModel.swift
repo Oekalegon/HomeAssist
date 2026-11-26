@@ -21,8 +21,9 @@ final class AppModel {
         }
     }
 
-    func connect(urlString: String, token: String) async {
+    func connect(urlString: String, token rawToken: String) async {
         errorMessage = nil
+        let token = AccessToken.normalized(rawToken)
         guard let candidate = HAClient(urlString: urlString, token: token) else {
             errorMessage = HAError.invalidURL.localizedDescription; return
         }
