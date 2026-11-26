@@ -36,25 +36,7 @@ struct FavouritesView: View {
     }
 
     private var tileGrid: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
-                ForEach(sections, id: \.section) { group in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(group.section.title).font(.headline)
-                        // Thermostats get the full width; everything else is a two-up grid.
-                        LazyVGrid(columns: group.section == .climate
-                                  ? [GridItem(.flexible())]
-                                  : [GridItem(.adaptive(minimum: 150), spacing: 12)],
-                                  spacing: 12) {
-                            ForEach(group.entities) { entity in
-                                EntityTile(entity: entity) { details = EntityRef(id: entity.entityId) }
-                            }
-                        }
-                    }
-                }
-            }
-            .padding()
-        }
+        EntitySectionsGrid(sections: sections) { details = EntityRef(id: $0.entityId) }
     }
 
     private var editList: some View {

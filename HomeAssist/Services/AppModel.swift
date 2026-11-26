@@ -11,6 +11,10 @@ final class AppModel {
     var isLive = false
     /// Why live updates are not running (e.g. "Reconnecting in 4 s…"), or `nil`.
     var liveStatus: String?
+    /// Which room each entity is in; `nil` until loaded or if it could not be loaded.
+    var registry: HARegistry?
+    /// Why rooms are unavailable (e.g. the user is not an administrator), or `nil`.
+    var registryStatus: String?
     /// Entities with a toggle request in flight. Tiles show a spinner for these.
     private(set) var togglingEntityIDs: Set<String> = []
 
@@ -25,9 +29,11 @@ final class AppModel {
     /// current, so a run that is still unwinding can't undo its successor.
     private var liveGeneration = 0
     private var refreshTask: Task<Void, Never>?
+    private var registryTask: Task<Void, Never>?
     private var pendingChanges: [StateChange] = []
     private var flushTask: Task<Void, Never>?
     private let makeLiveSource: @Sendable (HAClient) -> any LiveUpdateSource
+    private let makeRegistrySource: @Sendable (HAClient) -> any RegistrySource
 
     private let urlKey = "serverURL"
     private let tokenAccount = "accessToken"
@@ -38,11 +44,16 @@ final class AppModel {
     /// - Parameters:
     ///   - client: Use this client instead of the saved credentials (tests).
     ///   - makeLiveSource: Creates the live connection for a client; replaced in tests.
+    ///   - makeRegistrySource: Creates the room-registry loader for a client; replaced in tests.
     init(client: HAClient? = nil,
          makeLiveSource: @escaping @Sendable (HAClient) -> any LiveUpdateSource = {
              HAWebSocketClient(baseURL: $0.baseURL, token: $0.token)
+         },
+         makeRegistrySource: @escaping @Sendable (HAClient) -> any RegistrySource = {
+             HARegistryClient(baseURL: $0.baseURL, token: $0.token)
          }) {
         self.makeLiveSource = makeLiveSource
+        self.makeRegistrySource = makeRegistrySource
         if let client {
             self.client = client
         } else if let url = UserDefaults.standard.string(forKey: urlKey),
@@ -65,6 +76,7 @@ final class AppModel {
             stopLiveUpdates() // a running connection would still use the old credentials
             client = candidate
             await refresh()
+            Task { await loadRegistry() }
             startLiveUpdates()
         } catch { errorMessage = error.localizedDescription }
     }
@@ -72,7 +84,7 @@ final class AppModel {
     func disconnect() {
         stopLiveUpdates()
         KeychainStore.delete(account: tokenAccount)
-        client = nil; entities = []
+        client = nil; entities = []; registry = nil; registryStatus = nil
     }
 
     /// Fetches all states. Calls made while a fetch is running share it instead of starting
@@ -83,6 +95,31 @@ final class AppModel {
         refreshTask = task
         await task.value
         refreshTask = nil
+    }
+
+    /// Loads rooms. Concurrent calls share one load. A failure leaves `registry` empty and the
+    /// reason in `registryStatus`; the rest of the app keeps working without rooms.
+    func loadRegistry() async {
+        if let registryTask { await registryTask.value; return }
+        guard let client else { return }
+        let source = makeRegistrySource(client)
+        let task = Task {
+            do {
+                registry = try await source.load()
+                registryStatus = nil
+            } catch {
+                registry = nil
+                registryStatus = error.localizedDescription
+            }
+        }
+        registryTask = task
+        await task.value
+        registryTask = nil
+    }
+
+    /// The rooms to show. Without registry data, everything is in one "All devices" room.
+    var rooms: [Room] {
+        (registry ?? .empty).rooms(for: entities, unassignedName: registry == nil ? "All devices" : "Unassigned")
     }
 
     private func loadStates() async {
@@ -139,6 +176,7 @@ final class AppModel {
                         liveStatus = nil
                         pendingChanges.removeAll() // the snapshot below supersedes them
                         await refresh()
+                        Task { await loadRegistry() } // off the loop so a slow reply can't hold up events
                     case .change(let change):
                         enqueue(change)
                     }

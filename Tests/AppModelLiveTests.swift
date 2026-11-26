@@ -31,6 +31,22 @@ final class StubURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+/// A registry source returning a canned result.
+final class FakeRegistrySource: RegistrySource, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _result: Result<HARegistry, Error> = .success(.empty)
+    private var _loadCount = 0
+    var result: Result<HARegistry, Error> {
+        get { lock.withLock { _result } }
+        set { lock.withLock { _result = newValue } }
+    }
+    var loadCount: Int { lock.withLock { _loadCount } }
+    func load() async throws -> HARegistry {
+        lock.withLock { _loadCount += 1 }
+        return try result.get()
+    }
+}
+
 /// A live source the test drives by hand. Every `updates()` call is one "connection".
 final class FakeLiveSource: LiveUpdateSource, @unchecked Sendable {
     private let lock = NSLock()
@@ -49,13 +65,13 @@ final class FakeLiveSource: LiveUpdateSource, @unchecked Sendable {
 final class AppModelLiveTests: XCTestCase {
     private let statesJSON = #"[{"entity_id":"light.a","state":"off","attributes":{"friendly_name":"A"}}]"#
 
-    private func makeModel(source: FakeLiveSource) -> AppModel {
+    private func makeModel(source: FakeLiveSource, registry: FakeRegistrySource = FakeRegistrySource()) -> AppModel {
         StubURLProtocol.body = Data(statesJSON.utf8)
         StubURLProtocol.postCount = 0
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StubURLProtocol.self]
         let client = HAClient(urlString: "http://ha.test:8123", token: "t", session: URLSession(configuration: config))!
-        let model = AppModel(client: client, makeLiveSource: { _ in source })
+        let model = AppModel(client: client, makeLiveSource: { _ in source }, makeRegistrySource: { _ in registry })
         model.reconnectDelay = 0.01...0.05
         model.changeBatchInterval = .milliseconds(20)
         addTeardownBlock { await MainActor.run { model.stopLiveUpdates() } }
@@ -156,5 +172,30 @@ final class AppModelLiveTests: XCTestCase {
 
         await model.toggle(entity) // allowed again once the first finished
         XCTAssertEqual(StubURLProtocol.postCount, 2)
+    }
+
+    func testRegistryLoadsOnConnectAndGroupsRooms() async {
+        let source = FakeLiveSource(), registry = FakeRegistrySource()
+        registry.result = .success(HARegistry(areas: [HAArea(areaId: "k", name: "Kitchen")],
+                                              entityAreas: ["light.a": "k"], hiddenEntityIDs: []))
+        let model = makeModel(source: source, registry: registry)
+        await goLive(model, source)
+
+        let loaded = await waitUntil { model.registry != nil }
+        XCTAssertTrue(loaded)
+        XCTAssertEqual(model.rooms.map(\.name), ["Kitchen"])
+        XCTAssertNil(model.registryStatus)
+    }
+
+    func testRegistryFailureFallsBackToAllDevicesAndExplains() async {
+        let source = FakeLiveSource(), registry = FakeRegistrySource()
+        registry.result = .failure(HAError.registryDenied)
+        let model = makeModel(source: source, registry: registry)
+        await goLive(model, source)
+
+        let failed = await waitUntil { model.registryStatus != nil }
+        XCTAssertTrue(failed)
+        XCTAssertNil(model.registry)
+        XCTAssertEqual(model.rooms.map(\.name), ["All devices"], "the app stays usable without rooms")
     }
 }
