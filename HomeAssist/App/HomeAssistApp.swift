@@ -3,12 +3,13 @@ import SwiftUI
 @main
 struct HomeAssistApp: App {
     @State private var model = AppModel()
+    @State private var favourites = FavouritesStore()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             if model.isConnected {
-                EntityListView().environment(model)
+                RootTabView().environment(model).environment(favourites)
             } else {
                 ConnectionView().environment(model)
             }

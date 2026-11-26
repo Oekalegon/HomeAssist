@@ -2,7 +2,9 @@ import SwiftUI
 
 struct EntityListView: View {
     @Environment(AppModel.self) private var model
+    @Environment(FavouritesStore.self) private var favourites
     @State private var search = ""
+    @State private var details: EntityRef?
 
     private var grouped: [(domain: String, entities: [HAEntity])] {
         model.entities.groupedByDomain(matching: search)
@@ -14,6 +16,8 @@ struct EntityListView: View {
                 if let error = model.errorMessage {
                     Text(error).foregroundStyle(.red)
                 }
+                Text("Rooms are coming soon. For now this lists every device; swipe a row to favourite it, or press and hold for details.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 if let status = model.liveStatus {
                     Text(status).font(.footnote).foregroundStyle(.secondary)
                 }
@@ -21,24 +25,22 @@ struct EntityListView: View {
                     Section(group.domain) {
                         ForEach(group.entities) { entity in
                             EntityRow(entity: entity)
+                                .onLongPressGesture { details = EntityRef(id: entity.entityId) }
+                                .swipeActions {
+                                    Button(favourites.contains(entity.entityId) ? "Unfavourite" : "Favourite",
+                                           systemImage: "star") { favourites.toggle(entity.entityId) }
+                                        .tint(.yellow)
+                                }
                         }
                     }
                 }
             }
             .searchable(text: $search)
-            .navigationTitle("Home")
+            .navigationTitle("Rooms")
             .refreshable { await model.refresh() }
             .task { await model.refresh() }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Image(systemName: model.isLive ? "bolt.fill" : "bolt.slash")
-                        .foregroundStyle(model.isLive ? .green : .secondary)
-                        .accessibilityLabel(model.isLive ? "Live updates on" : "Live updates off")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right") { model.disconnect() }
-                }
-            }
+            .toolbar { ToolbarItem(placement: .topBarLeading) { HomeToolbar() } }
+            .sheet(item: $details) { EntityDetailSheet(entityID: $0.id) }
         }
     }
 }
