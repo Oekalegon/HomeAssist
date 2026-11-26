@@ -1,0 +1,28 @@
+name: Swift
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-app:
+    name: Build HomeAssist (iOS Simulator)
+    runs-on: macos-26
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install xcodegen
+      run: brew install xcodegen
+
+    - name: Generate Xcode project
+      run: xcodegen generate
+
+    - name: Build
+      run: >
+        xcodebuild -project HomeAssist.xcodeproj -scheme HomeAssist
+        -destination "generic/platform=iOS Simulator" build
+        CODE_SIGNING_ALLOWED=NO
