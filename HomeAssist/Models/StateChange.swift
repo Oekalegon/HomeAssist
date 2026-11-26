@@ -8,23 +8,35 @@ struct StateChange: Sendable, Hashable {
 }
 
 extension Array where Element == HAEntity {
-    /// Returns a copy with `change` applied, keeping the list sorted by friendly name.
-    ///
-    /// Replaces an existing entity, inserts a new one, or removes one whose `newState` is `nil`.
-    func applying(_ change: StateChange) -> [HAEntity] {
-        var result = self
-        let index = result.firstIndex { $0.entityId == change.entityId }
-        switch (change.newState, index) {
-        case (nil, let i?):
-            result.remove(at: i)
-        case (nil, nil):
-            break
-        case (let new?, let i?):
-            result[i] = new
-        case (let new?, nil):
-            let position = result.firstIndex { $0.friendlyName > new.friendlyName } ?? result.endIndex
-            result.insert(new, at: position)
+    /// The order entities are shown in: friendly name, with the entity ID as a tie-breaker so
+    /// the order is stable between updates.
+    func sortedForDisplay() -> [HAEntity] {
+        sorted {
+            let order = $0.friendlyName.localizedStandardCompare($1.friendlyName)
+            return order == .orderedSame ? $0.entityId < $1.entityId : order == .orderedAscending
         }
-        return result
+    }
+
+    /// Returns a copy with `changes` applied in order, kept sorted for display.
+    ///
+    /// A change replaces an existing entity, adds a new one, or removes one whose `newState`
+    /// is `nil`. Applying a batch at once means a burst of events costs one pass, not one
+    /// per event.
+    func applying(_ changes: [StateChange]) -> [HAEntity] {
+        guard !changes.isEmpty else { return self }
+        var byID = Dictionary(map { ($0.entityId, $0) }, uniquingKeysWith: { _, new in new })
+        for change in changes { byID[change.entityId] = change.newState }
+        return Array(byID.values).sortedForDisplay()
+    }
+
+    func applying(_ change: StateChange) -> [HAEntity] { applying([change]) }
+
+    /// Entities whose name contains `search` (all when empty), grouped by domain and sorted by
+    /// domain. Order within a group is preserved.
+    func groupedByDomain(matching search: String = "") -> [(domain: String, entities: [HAEntity])] {
+        let filtered = search.isEmpty ? self : filter { $0.friendlyName.localizedCaseInsensitiveContains(search) }
+        return Dictionary(grouping: filtered, by: \.domain)
+            .map { (domain: $0.key, entities: $0.value) }
+            .sorted { $0.domain < $1.domain }
     }
 }

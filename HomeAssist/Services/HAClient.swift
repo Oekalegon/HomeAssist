@@ -1,12 +1,13 @@
 import Foundation
 
 enum HAError: LocalizedError {
-    case invalidURL, unauthorized, http(Int), transport(Error)
+    case invalidURL, unauthorized, subscribeFailed, http(Int), transport(Error)
 
     var errorDescription: String? {
         switch self {
         case .invalidURL: "The server URL is not valid."
         case .unauthorized: "Home Assistant rejected the access token."
+        case .subscribeFailed: "Home Assistant refused the live-updates subscription."
         case .http(let code): "Home Assistant returned HTTP \(code)."
         case .transport(let e): e.localizedDescription
         }

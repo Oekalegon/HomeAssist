@@ -4,11 +4,8 @@ struct EntityListView: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
 
-    private var grouped: [(String, [HAEntity])] {
-        let filtered = model.entities.filter {
-            search.isEmpty || $0.friendlyName.localizedCaseInsensitiveContains(search)
-        }
-        return Dictionary(grouping: filtered, by: \.domain).sorted { $0.key < $1.key }
+    private var grouped: [(domain: String, entities: [HAEntity])] {
+        model.entities.groupedByDomain(matching: search)
     }
 
     var body: some View {
@@ -17,9 +14,12 @@ struct EntityListView: View {
                 if let error = model.errorMessage {
                     Text(error).foregroundStyle(.red)
                 }
-                ForEach(grouped, id: \.0) { domain, items in
-                    Section(domain) {
-                        ForEach(items) { entity in
+                if let status = model.liveStatus {
+                    Text(status).font(.footnote).foregroundStyle(.secondary)
+                }
+                ForEach(grouped, id: \.domain) { group in
+                    Section(group.domain) {
+                        ForEach(group.entities) { entity in
                             EntityRow(entity: entity)
                         }
                     }
@@ -55,9 +55,9 @@ struct EntityRow: View {
             }
             Spacer()
             if entity.isToggleable {
-                Toggle("", isOn: Binding(get: { entity.isOn },
-                                         set: { _ in Task { await model.toggle(entity) } }))
-                    .labelsHidden()
+                Toggle(entity.friendlyName, isOn: Binding(get: { entity.isOn },
+                                                          set: { _ in Task { await model.toggle(entity) } }))
+                    .labelsHidden() // the row already shows the name; VoiceOver still reads it
             }
         }
     }

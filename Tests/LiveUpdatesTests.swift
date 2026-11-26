@@ -56,4 +56,31 @@ final class LiveUpdatesTests: XCTestCase {
         XCTAssertEqual(HAWebSocketClient.webSocketURL(from: URL(string: "https://example.com/ha")!)?.absoluteString,
                        "wss://example.com/ha/api/websocket")
     }
+
+    func testApplyingBatchAppliesInOrderAndLastChangeWins() throws {
+        let list = [try entity("light.a", "A")]
+        let result = list.applying([
+            StateChange(entityId: "light.a", newState: try entity("light.a", "A", "on")),
+            StateChange(entityId: "light.a", newState: try entity("light.a", "A", "off")),
+            StateChange(entityId: "light.b", newState: try entity("light.b", "B")),
+            StateChange(entityId: "light.b", newState: nil),
+        ])
+        XCTAssertEqual(result.map(\.entityId), ["light.a"])
+        XCTAssertEqual(result.first?.state, "off")
+    }
+
+    func testSortIsStableForEqualNames() throws {
+        let list = [try entity("light.z", "Same"), try entity("light.a", "Same")]
+        XCTAssertEqual(list.sortedForDisplay().map(\.entityId), ["light.a", "light.z"])
+    }
+
+    func testGroupedByDomainFiltersAndSorts() throws {
+        let list = [try entity("switch.fan", "Fan"), try entity("light.lamp", "Lamp"),
+                    try entity("light.desk", "Desk")]
+        let all = list.groupedByDomain()
+        XCTAssertEqual(all.map(\.domain), ["light", "switch"])
+        XCTAssertEqual(all[0].entities.map(\.entityId), ["light.lamp", "light.desk"]) // input order kept
+        XCTAssertEqual(list.groupedByDomain(matching: "des").flatMap(\.entities).map(\.entityId), ["light.desk"])
+        XCTAssertTrue(list.groupedByDomain(matching: "nothing").isEmpty)
+    }
 }

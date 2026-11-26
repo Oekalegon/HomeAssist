@@ -14,7 +14,13 @@ struct HomeAssistApp: App {
             }
         }
         .onChange(of: scenePhase, initial: true) {
-            if scenePhase == .active { model.startLiveUpdates() } else { model.stopLiveUpdates() }
+            // `.inactive` also happens for Control Center, the app switcher and system prompts,
+            // so only a real trip to the background closes the connection.
+            switch scenePhase {
+            case .active: model.startLiveUpdates()
+            case .background: model.stopLiveUpdates()
+            default: break
+            }
         }
     }
 }

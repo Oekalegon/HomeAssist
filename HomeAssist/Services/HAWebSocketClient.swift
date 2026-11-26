@@ -1,23 +1,14 @@
 import Foundation
 
 /// Streams live state changes from Home Assistant's WebSocket API.
-///
-/// One call to ``updates()`` opens one connection. The stream ends (with an error if the
-/// connection failed) when the socket closes, so callers own reconnect and backoff.
-struct HAWebSocketClient: Sendable {
+struct HAWebSocketClient: LiveUpdateSource {
     let baseURL: URL
     let token: String
     var session: URLSession = .shared
 
-    enum Update: Sendable {
-        /// Authenticated and subscribed. Fetch a full state snapshot now: anything that changed
-        /// before this point was not delivered as an event.
-        case connected
-        case change(StateChange)
-    }
-
     private static let subscribeID = 1
     private static let pingInterval: Duration = .seconds(30)
+    private static let pongTimeout: Duration = .seconds(10)
 
     /// `http(s)://host/…` → `ws(s)://host/…/api/websocket`.
     static func webSocketURL(from baseURL: URL) -> URL? {
@@ -27,7 +18,7 @@ struct HAWebSocketClient: Sendable {
         return comps.url
     }
 
-    func updates() -> AsyncThrowingStream<Update, Error> {
+    func updates() -> AsyncThrowingStream<LiveUpdate, Error> {
         AsyncThrowingStream { continuation in
             guard let url = Self.webSocketURL(from: baseURL) else {
                 continuation.finish(throwing: HAError.invalidURL)
@@ -36,14 +27,14 @@ struct HAWebSocketClient: Sendable {
             let socket = session.webSocketTask(with: url)
             socket.resume()
 
-            // Detects half-dead connections: a failed ping closes the socket, which makes
-            // `receive()` throw and ends the stream.
+            // Detects half-dead connections (e.g. Wi-Fi dropping silently): a ping without a
+            // pong inside `pongTimeout` closes the socket, which makes `receive()` throw and
+            // ends the stream.
             let pinger = Task {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: Self.pingInterval)
-                    socket.sendPing { error in
-                        if error != nil { socket.cancel(with: .abnormalClosure, reason: nil) }
-                    }
+                    guard !Task.isCancelled else { return }
+                    if await !Self.pingResponds(socket) { return }
                 }
             }
             let reader = Task {
@@ -62,8 +53,28 @@ struct HAWebSocketClient: Sendable {
         }
     }
 
+    /// Sends one ping and waits up to `pongTimeout` for the pong. On timeout the socket is
+    /// cancelled, which also completes the pending ping.
+    private static func pingResponds(_ socket: URLSessionWebSocketTask) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await withCheckedContinuation { continuation in
+                    socket.sendPing { error in continuation.resume(returning: error == nil) }
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: Self.pongTimeout)
+                return false
+            }
+            let answered = await group.next() ?? false
+            if !answered { socket.cancel(with: .abnormalClosure, reason: nil) }
+            group.cancelAll()
+            return answered
+        }
+    }
+
     private func read(_ socket: URLSessionWebSocketTask,
-                      into continuation: AsyncThrowingStream<Update, Error>.Continuation) async throws {
+                      into continuation: AsyncThrowingStream<LiveUpdate, Error>.Continuation) async throws {
         while true {
             let data: Data
             switch try await socket.receive() {
@@ -80,7 +91,7 @@ struct HAWebSocketClient: Sendable {
             case .authInvalid:
                 throw HAError.unauthorized
             case .result(let id, let success) where id == Self.subscribeID:
-                guard success else { throw HAError.http(-1) }
+                guard success else { throw HAError.subscribeFailed }
                 continuation.yield(.connected)
             case .stateChanged(let change):
                 continuation.yield(.change(change))
