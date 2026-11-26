@@ -7,6 +7,9 @@ final class AppModel {
     var client: HAClient?
     var errorMessage: String?
     var isLoading = false
+    /// True while the WebSocket is connected and delivering live state changes.
+    var isLive = false
+    private var liveTask: Task<Void, Never>?
 
     private let urlKey = "serverURL"
     private let tokenAccount = "accessToken"
@@ -33,10 +36,12 @@ final class AppModel {
             KeychainStore.save(token, account: tokenAccount)
             client = candidate
             await refresh()
+            startLiveUpdates()
         } catch { errorMessage = error.localizedDescription }
     }
 
     func disconnect() {
+        stopLiveUpdates()
         KeychainStore.delete(account: tokenAccount)
         client = nil; entities = []
     }
@@ -53,7 +58,47 @@ final class AppModel {
         guard let client else { return }
         do {
             try await client.callService(domain: "homeassistant", service: "toggle", entityId: entity.entityId)
-            await refresh()
+            // With a live connection the resulting state_changed event updates the list.
+            if !isLive { await refresh() }
         } catch { errorMessage = error.localizedDescription }
+    }
+
+    /// Starts the WebSocket and keeps it alive, reconnecting with exponential backoff (1s…30s).
+    /// Does nothing if already running or not connected to a server.
+    func startLiveUpdates() {
+        guard liveTask == nil, let client else { return }
+        let socket = HAWebSocketClient(baseURL: client.baseURL, token: client.token)
+        liveTask = Task { [weak self] in
+            var delay = 1.0
+            while !Task.isCancelled {
+                do {
+                    for try await update in socket.updates() {
+                        guard let self else { return }
+                        switch update {
+                        case .connected:
+                            delay = 1
+                            isLive = true
+                            await refresh()
+                        case .change(let change):
+                            entities = entities.applying(change)
+                        }
+                    }
+                } catch HAError.unauthorized {
+                    self?.isLive = false
+                    self?.errorMessage = HAError.unauthorized.localizedDescription
+                    self?.liveTask = nil
+                    return
+                } catch {}
+                self?.isLive = false
+                try? await Task.sleep(for: .seconds(delay))
+                delay = min(delay * 2, 30)
+            }
+        }
+    }
+
+    func stopLiveUpdates() {
+        liveTask?.cancel()
+        liveTask = nil
+        isLive = false
     }
 }

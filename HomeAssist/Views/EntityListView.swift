@@ -30,7 +30,14 @@ struct EntityListView: View {
             .refreshable { await model.refresh() }
             .task { await model.refresh() }
             .toolbar {
-                Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right") { model.disconnect() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Image(systemName: model.isLive ? "bolt.fill" : "bolt.slash")
+                        .foregroundStyle(model.isLive ? .green : .secondary)
+                        .accessibilityLabel(model.isLive ? "Live updates on" : "Live updates off")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Disconnect", systemImage: "rectangle.portrait.and.arrow.right") { model.disconnect() }
+                }
             }
         }
     }
