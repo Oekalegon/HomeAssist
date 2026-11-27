@@ -87,7 +87,11 @@ A medium/large sheet opened from any tile.
 
 - **Light:** on/off, brightness slider, colour temperature slider, colour picker when supported.
 - **Climate:** large current temperature, target with − / + buttons, mode picker (heat, cool, off, …).
-- **Sensor:** current value and a 24-hour history chart (Swift Charts, from `/api/history/period`).
+- **Sensor:** current value and a history chart (Swift Charts, from `/api/history/period`) with a
+  24 h / 7 d / 30 d picker. Dragging a finger over the chart shows the value and time at that point;
+  low and high for the range are listed under it. Gaps (sensor unavailable) are left blank rather
+  than joined, and long ranges are thinned to about 300 points keeping the peaks. Only for sensors
+  that report numbers.
 - **Everything:** **Add to / Remove from Favourites**, the room, and a collapsible attributes list.
 
 Controls call domain services (`light.turn_on`, `climate.set_temperature`, …) and wait for the live
