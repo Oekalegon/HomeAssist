@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Details for one entity. Controls for lights and climate come in a later change.
+/// Details for one entity: favourite button, a history chart for numeric sensors, and
+/// attributes. Controls for lights and climate come in a later change.
 struct EntityDetailSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(FavouritesStore.self) private var favourites
@@ -24,6 +25,9 @@ struct EntityDetailSheet: View {
                                    systemImage: isFavourite ? "star.slash" : "star") {
                                 favourites.toggle(entityID)
                             }
+                        }
+                        if entity.hasNumericHistory, let client = model.client {
+                            Section("History") { SensorHistoryView(entity: entity, source: client) }
                         }
                         Section("Attributes") {
                             ForEach(entity.attributes.sorted { $0.key < $1.key }, id: \.key) { key, value in

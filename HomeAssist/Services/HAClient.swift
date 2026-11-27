@@ -47,7 +47,11 @@ struct HAClient: Sendable {
     }
 
     private func send(path: String, method: String, body: Data?) async throws -> Data {
-        var req = URLRequest(url: baseURL.appending(path: path))
+        try await send(url: baseURL.appending(path: path), method: method, body: body)
+    }
+
+    fileprivate func send(url: URL, method: String, body: Data?) async throws -> Data {
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = 10
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -65,5 +69,25 @@ struct HAClient: Sendable {
             }
         } catch let e as HAError { throw e }
         catch { throw HAError.transport(error) }
+    }
+}
+
+extension HAClient: HistorySource {
+    /// `GET /api/history/period/<start>` for one entity. `minimal_response` and `no_attributes`
+    /// keep the reply small: only the state and time of each change.
+    func history(entityID: String, start: Date, end: Date) async throws -> SensorHistory {
+        let iso = ISO8601DateFormatter() // UTC, e.g. 2026-11-27T10:00:00Z
+        var components = URLComponents(
+            url: baseURL.appending(path: "api/history/period/\(iso.string(from: start))"),
+            resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "filter_entity_id", value: entityID),
+            URLQueryItem(name: "end_time", value: iso.string(from: end)),
+            URLQueryItem(name: "minimal_response", value: nil),
+            URLQueryItem(name: "no_attributes", value: nil),
+        ]
+        guard let url = components?.url else { throw HAError.invalidURL }
+        let data = try await send(url: url, method: "GET", body: nil)
+        return try SensorHistory.parse(data, start: start, end: end)
     }
 }
